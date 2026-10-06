@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QuickPatch.Catalog.Api/QuickPatch.Catalog.Api.csproj" />
+    <Project Path="src/QuickPatch.Catalog.Application/QuickPatch.Catalog.Application.csproj" />
+    <Project Path="src/QuickPatch.Catalog.Domain/QuickPatch.Catalog.Domain.csproj" />
+    <Project Path="src/QuickPatch.Catalog.Infrastructure/QuickPatch.Catalog.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/integration/">
+    <Project Path="tests/integration/QuickPatch.Catalog.IntegrationTests/QuickPatch.Catalog.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/QuickPatch.Catalog.UnitTests/QuickPatch.Catalog.UnitTests.csproj" />
+  </Folder>
+</Solution>
