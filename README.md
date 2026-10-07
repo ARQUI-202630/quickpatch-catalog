@@ -44,6 +44,36 @@ dotnet test tests/integration/QuickPatch.Catalog.IntegrationTests
 dotnet run --project src/QuickPatch.Catalog.Api
 ```
 
+## Capacidades implementadas
+
+|Capacidad|Contrato|Roles|
+|---|---|---|
+|`GET /v1/catalog/categories`: categorías activas del tenant, por nombre|`catalog.v1.yaml` 1.1.0|Cualquier usuario autenticado|
+|`POST /v1/catalog/admin/categories`: crear categoría (nombre único por tenant, sin distinguir mayúsculas)|`catalog.v1.yaml` 1.1.0|`admin_tenant`|
+|`PATCH /v1/catalog/admin/categories/{id}`: cambiar descripción o activar/desactivar|`catalog.v1.yaml` 1.1.0|`admin_tenant`|
+
+Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado completo de la categoría, mediante Outbox (ADR-007). ServiceRequest y Matching mantienen con él su réplica local (DD 5.20), así que nadie llama a Catalog de forma síncrona (SAD 4.3).
+
+## Seguridad y datos
+
+- JWT RS256 de Identity (`Jwt__PublicKeyPem`); el tenant sale del token. Cada 403 queda en un log WARNING (RNF-04).
+- RLS forzado en `service_categories` y `outbox_events` (DD 10.2); roles en `db/roles.sql` (`catalog_app` y `catalog_outbox`).
+- `updated_at` marca la versión de cada categoría y viaja en el evento para que las réplicas descarten cambios atrasados.
+
+## Configuración
+
+|Clave|Para qué|
+|---|---|
+|`ConnectionStrings__Catalog`|PostgreSQL con el usuario `catalog_app`|
+|`Jwt__PublicKeyPem`|Validación del token de Identity|
+|`Kafka__BootstrapServers`|Kafka (VM6); vacío deshabilita el publicador|
+|`Outbox__PublisherRole`|Rol `BYPASSRLS` del publicador|
+
+## Pruebas
+
+- `tests/unit`: dominio, casos de uso y API en memoria (cobertura de Domain, Application y Api).
+- `tests/integration`: PostgreSQL 16 y Kafka reales (Testcontainers): eventos publicados, aislamiento por tenant, unicidad y RLS.
+
 ## Contenedor
 
 - Imagen: `Dockerfile` en la raíz (multi-stage, usuario sin privilegios).
