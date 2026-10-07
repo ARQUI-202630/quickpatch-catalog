@@ -5,7 +5,7 @@ using QuickPatch.Catalog.Domain.Categories;
 
 namespace QuickPatch.Catalog.Application.Events;
 
-/// <summary>Sobre común de los eventos (DD 8.2.1; <c>quickpatch-contracts/events</c>).</summary>
+/// <summary>Sobre común de los eventos (DD 8.2.1; <c>quickpatch-kafka/events</c>).</summary>
 public sealed record EventEnvelope<TData>(
     Guid EventId,
     string EventType,
