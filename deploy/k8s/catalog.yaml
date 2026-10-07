@@ -1,0 +1,98 @@
+# Despliegue de Catalog en k3s (namespace quickpatch), igual en QA y producción.
+# Primer despliegue: crear el Secret catalog-secretos (deploy/k8s/README.md), reemplazar <vm-mensajeria> por la IP de
+# Kafka del ambiente y aplicar este archivo con `kubectl apply -f deploy/k8s/catalog.yaml`.
+# Después, el pipeline actualiza la imagen con `kubectl set image deployment/catalog "*=<imagen>"`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-config
+  namespace: quickpatch
+  labels: { app: catalog }
+data:
+  Jwt__Issuer: "quickpatch-identity"
+  Jwt__Audience: "quickpatch"
+  Kafka__BootstrapServers: "<vm-mensajeria>:9092"
+  Outbox__PublisherRole: "catalog_outbox"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: quickpatch
+  labels: { app: catalog }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: catalog }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: catalog }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # La imagen declara USER app (por nombre); Kubernetes necesita el UID para verificar que no es root.
+        runAsUser: 1654
+        runAsGroup: 1654
+      initContainers:
+        # Migraciones (EF Core bundle) con el rol catalog_migrator, dueño de las tablas (DD 10.2).
+        - name: migraciones
+          image: ghcr.io/arqui-202630/quickpatch-catalog:pendiente
+          command: ["/app/efbundle", "--connection", "$(MIGRATOR_CONNECTION)"]
+          env:
+            - name: MIGRATOR_CONNECTION
+              valueFrom: { secretKeyRef: { name: catalog-secretos, key: migrator-connection } }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      containers:
+        - name: catalog
+          image: ghcr.io/arqui-202630/quickpatch-catalog:pendiente
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: catalog-config }
+          env:
+            - name: ConnectionStrings__Catalog
+              valueFrom: { secretKeyRef: { name: catalog-secretos, key: app-connection } }
+            - name: Jwt__PublicKeyPem
+              valueFrom: { secretKeyRef: { name: catalog-secretos, key: jwt-public-key } }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          # Pendiente de medición (Documento de Infraestructura, 5.6); límite inicial dentro del presupuesto de VM3.
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: quickpatch
+  labels: { app: catalog }
+spec:
+  selector: { app: catalog }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+# El gateway quita /api y reenvía a Traefik (NodePort 30080); Traefik elige el servicio por la ruta del contrato.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: catalog
+  namespace: quickpatch
+spec:
+  rules:
+    - http:
+        paths:
+          - { path: C:/Program Files/Git/v1/catalog, pathType: Prefix, backend: { service: { name: catalog, port: { name: http } } } }

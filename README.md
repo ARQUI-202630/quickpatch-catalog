@@ -79,3 +79,8 @@ Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado compl
 - Imagen: `Dockerfile` en la raíz (multi-stage, usuario sin privilegios).
 - Puerto: `8080`.
 - Probes para k3s: `GET /health/live` (el proceso responde) y `GET /health/ready` (el servicio y sus dependencias están listos).
+
+## Despliegue
+
+- `deploy/k8s/catalog.yaml`: ConfigMap, Deployment, Service e Ingress (`C:/Program Files/Git/v1/catalog`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `catalog_migrator`.
+- Secretos y primer despliegue: `deploy/k8s/README.md`.
