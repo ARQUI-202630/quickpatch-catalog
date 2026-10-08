@@ -95,4 +95,4 @@ spec:
   rules:
     - http:
         paths:
-          - { path: C:/Program Files/Git/v1/catalog, pathType: Prefix, backend: { service: { name: catalog, port: { name: http } } } }
+          - { path: /v1/catalog, pathType: Prefix, backend: { service: { name: catalog, port: { name: http } } } }
