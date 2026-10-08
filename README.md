@@ -82,5 +82,5 @@ Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado compl
 
 ## Despliegue
 
-- `deploy/k8s/catalog.yaml`: ConfigMap, Deployment, Service e Ingress (`C:/Program Files/Git/v1/catalog`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `catalog_migrator`.
+- `deploy/k8s/catalog.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/catalog`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `catalog_migrator`.
 - Secretos y primer despliegue: `deploy/k8s/README.md`.
