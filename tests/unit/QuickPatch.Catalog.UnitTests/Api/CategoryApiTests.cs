@@ -70,7 +70,7 @@ public class CategoryApiTests(CatalogApiFactory factory) : IClassFixture<Catalog
     }
 
     [Fact]
-    public async Task NombreRepetido_409_YRolNoAdmin_403_YSinToken_401()
+    public async Task NombreRepetido_409_YRolNoAdmin_403_YAdministrarSinToken_401()
     {
         var tenant = Guid.NewGuid();
         using var admin = Client("admin_tenant", tenant);
@@ -82,7 +82,7 @@ public class CategoryApiTests(CatalogApiFactory factory) : IClassFixture<Catalog
 
         using var repetido = await admin.PostAsJsonAsync(Admin, new { name = "CERRAJERÍA" });
         using var prohibido = await cliente.PostAsJsonAsync(Admin, new { name = "Otra" });
-        using var sinToken = await anonimo.GetAsync(List);
+        using var sinToken = await anonimo.PostAsJsonAsync(Admin, new { name = "Anónima" });
 
         Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
         Assert.Equal("https://quickpatch.internal/problems/categoria-registrada", (await Json(repetido)).GetProperty("type").GetString());
@@ -142,5 +142,90 @@ public class CategoryApiTests(CatalogApiFactory factory) : IClassFixture<Catalog
         Assert.Equal(HttpStatusCode.Unauthorized, patch.StatusCode);
         Assert.Equal(HttpStatusCode.OK, live.StatusCode);
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+    }
+}
+/// <summary>Lista de categorías sin token con el tenant del canal (contrato 1.2.0, registro de técnicos).</summary>
+public class CategoriasSinTokenTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+{
+    private static readonly Uri Admin = new("/v1/catalog/admin/categories", UriKind.Relative);
+    private static readonly Uri List = new("/v1/catalog/categories", UriKind.Relative);
+
+    private WebApplicationFactory<Program> ConCanal(Guid canal) =>
+        factory.WithWebHostBuilder(b => b.UseSetting("Channel:TenantId", canal.ToString()));
+
+    private static HttpClient ConToken(WebApplicationFactory<Program> app, string role, Guid tenant)
+    {
+        var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestTokens.Create(Guid.NewGuid(), tenant, role));
+        return client;
+    }
+
+    private static async Task<string[]> Nombres(HttpResponseMessage response)
+    {
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return [.. doc.RootElement.EnumerateArray().Select(c => c.GetProperty("name").GetString() ?? string.Empty)];
+    }
+
+    [Fact]
+    public async Task SinToken_ListaSoloLasDelTenantDelCanal()
+    {
+        var canal = Guid.NewGuid();
+        var otro = Guid.NewGuid();
+        using var app = ConCanal(canal);
+        using var adminCanal = ConToken(app, "admin_tenant", canal);
+        using var adminOtro = ConToken(app, "admin_tenant", otro);
+        using (await adminCanal.PostAsJsonAsync(Admin, new { name = "Plomería" }))
+        using (await adminOtro.PostAsJsonAsync(Admin, new { name = "Gas" }))
+        {
+        }
+
+        using var anonimo = app.CreateClient();
+        anonimo.DefaultRequestHeaders.Add("X-Channel-Id", "quickpatch-mobile");
+        using var lista = await anonimo.GetAsync(List);
+
+        Assert.Equal(HttpStatusCode.OK, lista.StatusCode);
+        Assert.Equal(["Plomería"], await Nombres(lista));
+    }
+
+    [Fact]
+    public async Task ConToken_UsaElTenantDelToken_NoElDelCanal()
+    {
+        var canal = Guid.NewGuid();
+        var propio = Guid.NewGuid();
+        using var app = ConCanal(canal);
+        using var adminCanal = ConToken(app, "admin_tenant", canal);
+        using var adminPropio = ConToken(app, "admin_tenant", propio);
+        using (await adminCanal.PostAsJsonAsync(Admin, new { name = "Pintura" }))
+        using (await adminPropio.PostAsJsonAsync(Admin, new { name = "Cerrajería" }))
+        {
+        }
+
+        using var cliente = ConToken(app, "cliente", propio);
+        using var lista = await cliente.GetAsync(List);
+
+        Assert.Equal(["Cerrajería"], await Nombres(lista));
+    }
+
+    [Fact]
+    public async Task TokenInvalido_401_AunqueHayaCanal()
+    {
+        using var app = ConCanal(Guid.NewGuid());
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "no-es-un-jwt");
+
+        using var lista = await client.GetAsync(List);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, lista.StatusCode);
+    }
+
+    [Fact]
+    public async Task SinCanalConfigurado_503()
+    {
+        using var app = ConCanal(Guid.Empty);
+        using var anonimo = app.CreateClient();
+
+        using var lista = await anonimo.GetAsync(List);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, lista.StatusCode);
     }
 }

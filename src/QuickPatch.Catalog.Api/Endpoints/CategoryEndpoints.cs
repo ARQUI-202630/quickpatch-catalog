@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 using QuickPatch.Catalog.Api.Http;
 using QuickPatch.Catalog.Api.Security;
 using QuickPatch.Catalog.Application.Categories;
@@ -22,12 +24,13 @@ public sealed record CreateCategoryRequest(string? Name, string? Description);
 
 public sealed record UpdateCategoryRequest(string? Description, bool? Active);
 
-/// <summary>Endpoints del contrato <c>catalog.v1.yaml</c> 1.1.0.</summary>
+/// <summary>Endpoints del contrato <c>catalog.v1.yaml</c> 1.2.0.</summary>
 public static class CategoryEndpoints
 {
     public static IEndpointRouteBuilder MapCategoryEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/v1/catalog/categories", ListAsync).WithName("listCategories").RequireAuthorization();
+        // Con o sin token (contrato 1.2.0): sin token, la app del registro de técnicos ve las del tenant del canal.
+        app.MapGet("/v1/catalog/categories", ListAsync).WithName("listCategories").AllowAnonymous();
 
         var admin = app.MapGroup("/v1/catalog/admin/categories").RequireAuthorization(AuthenticatedUser.AdminTenantPolicy);
         admin.MapPost("/", CreateAsync).WithName("createCategory");
@@ -35,14 +38,34 @@ public static class CategoryEndpoints
         return app;
     }
 
-    private static async Task<IResult> ListAsync(HttpContext context, ListCategoriesHandler handler, CancellationToken cancellationToken)
+    private static async Task<IResult> ListAsync(
+        HttpContext context,
+        ListCategoriesHandler handler,
+        IOptions<ChannelOptions> channel,
+        CancellationToken cancellationToken)
     {
-        if (!AuthenticatedUser.TryFrom(context.User, out var user))
+        Guid tenantId;
+        if (context.Request.Headers.Authorization.Count > 0)
         {
-            return Unauthorized();
+            // Con token, el tenant sale del token. Un token inválido o vencido responde 401: nunca cae al canal.
+            if (!AuthenticatedUser.TryFrom(context.User, out var user))
+            {
+                return Unauthorized();
+            }
+
+            tenantId = user.TenantId;
+        }
+        else if (channel.Value.TenantId != Guid.Empty)
+        {
+            // Sin token, el tenant del canal (configuración del servicio); nunca un dato de la petición (RN-U5).
+            tenantId = channel.Value.TenantId;
+        }
+        else
+        {
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "El canal no tiene tenant configurado.");
         }
 
-        var categories = await handler.HandleAsync(user.TenantId, cancellationToken);
+        var categories = await handler.HandleAsync(tenantId, cancellationToken);
         return Results.Ok(categories.Select(CategoryResponse.From));
     }
 

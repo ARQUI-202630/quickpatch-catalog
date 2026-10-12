@@ -48,9 +48,9 @@ dotnet run --project src/QuickPatch.Catalog.Api
 
 |Capacidad|Contrato|Roles|
 |---|---|---|
-|`GET /v1/catalog/categories`: categorías activas del tenant, por nombre|`catalog.v1.yaml` 1.1.0|Cualquier usuario autenticado|
-|`POST /v1/catalog/admin/categories`: crear categoría (nombre único por tenant, sin distinguir mayúsculas)|`catalog.v1.yaml` 1.1.0|`admin_tenant`|
-|`PATCH /v1/catalog/admin/categories/{id}`: cambiar descripción o activar/desactivar|`catalog.v1.yaml` 1.1.0|`admin_tenant`|
+|`GET /v1/catalog/categories`: categorías activas del tenant, por nombre. Sin token, las del tenant del canal (`Channel__TenantId`), para el registro de técnicos|`catalog.v1.yaml` 1.2.0|Cualquier usuario autenticado o sin token (registro de técnicos)|
+|`POST /v1/catalog/admin/categories`: crear categoría (nombre único por tenant, sin distinguir mayúsculas)|`catalog.v1.yaml` 1.2.0|`admin_tenant`|
+|`PATCH /v1/catalog/admin/categories/{id}`: cambiar descripción o activar/desactivar|`catalog.v1.yaml` 1.2.0|`admin_tenant`|
 
 Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado completo de la categoría, mediante Outbox (ADR-007). ServiceRequest y Matching mantienen con él su réplica local (DD 5.20), así que nadie llama a Catalog de forma síncrona (SAD 4.3).
 

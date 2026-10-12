@@ -13,6 +13,8 @@ data:
   Jwt__Audience: "quickpatch"
   Kafka__BootstrapServers: "<vm-mensajeria>:9092"
   Outbox__PublisherRole: "catalog_outbox"
+  # Tenant del canal, el mismo de Identity: la lista de categorías sin token (registro de técnicos, contrato 1.2.0).
+  Channel__TenantId: "00000000-0000-0000-0000-000000000001"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -178,6 +178,28 @@ public class CatalogFlowTests(CatalogEnvironment env)
     }
 
     [Fact]
+    public async Task SinToken_ListaLasDelTenantDelCanal_BajoRls()
+    {
+        var canal = Guid.NewGuid();
+        var otro = Guid.NewGuid();
+        using (await env.Client("admin_tenant", canal).PostAsJsonAsync(Admin, new { name = "Pintura" }))
+        using (await env.Client("admin_tenant", otro).PostAsJsonAsync(Admin, new { name = "Jardinería" }))
+        {
+        }
+
+        // Registro de técnicos (contrato 1.2.0): sin token, el tenant es el del canal configurado en el servicio.
+        await using var app = env.App.WithWebHostBuilder(b => b.UseSetting("Channel:TenantId", canal.ToString()));
+        using var anonimo = app.CreateClient();
+        anonimo.DefaultRequestHeaders.Add("X-Channel-Id", "quickpatch-mobile");
+        using var lista = await anonimo.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, lista.StatusCode);
+        var nombres = (await lista.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
+            .Select(c => c.GetProperty("name").GetString());
+        Assert.Equal(["Pintura"], nombres);
+    }
+
+    [Fact]
     public async Task Rls_ElRolDelServicioNoVeNiEscribeEnOtroTenant()
     {
         var tenant = Guid.NewGuid();
