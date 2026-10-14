@@ -55,10 +55,10 @@ public static class CategoryEndpoints
 
             tenantId = user.TenantId;
         }
-        else if (channel.Value.TenantId != Guid.Empty)
+        else if (channel.Value.TryResolve(context.Request.Headers["X-Channel-Id"].ToString(), out var channelTenant))
         {
-            // Sin token, el tenant del canal (configuración del servicio); nunca un dato de la petición (RN-U5).
-            tenantId = channel.Value.TenantId;
+            // Sin token, el tenant del canal según la configuración del servicio; nunca un tenant_id de la petición (RN-U5).
+            tenantId = channelTenant;
         }
         else
         {
