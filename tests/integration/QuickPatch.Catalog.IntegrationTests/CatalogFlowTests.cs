@@ -200,6 +200,58 @@ public class CatalogFlowTests(CatalogEnvironment env)
     }
 
     [Fact]
+    public async Task SinToken_CadaCanalListaSoloLasDeSuTenant()
+    {
+        var alfa = Guid.NewGuid();
+        var gama = Guid.NewGuid();
+        using (await env.Client("admin_tenant", alfa).PostAsJsonAsync(Admin, new { name = "Cerrajería" }))
+        using (await env.Client("admin_tenant", gama).PostAsJsonAsync(Admin, new { name = "Vidriería" }))
+        {
+        }
+
+        // Dos empresas con su propio canal (DEP-09): el mismo servicio responde a cada app con su catálogo.
+        await using var app = env.App.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Channel:Tenants:canal-alfa", alfa.ToString());
+            b.UseSetting("Channel:Tenants:canal-gama", gama.ToString());
+        });
+
+        Assert.Equal(["Cerrajería"], await NombresDelCanalAsync(app, "canal-alfa"));
+        Assert.Equal(["Vidriería"], await NombresDelCanalAsync(app, "canal-gama"));
+        using var ajeno = app.CreateClient();
+        ajeno.DefaultRequestHeaders.Add("X-Channel-Id", "canal-ajeno");
+        using var respuesta = await ajeno.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rls_HabilitadoYForzadoEnCadaTablaConTenant()
+    {
+        // DD 10.1: toda tabla con tenant_id tiene RLS habilitado y forzado.
+        await using var connection = new NpgsqlConnection(env.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT coalesce(string_agg(c.relname, ', ' ORDER BY c.relname), '')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+            WHERE c.relkind = 'r'
+              AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+              AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
+            """, connection);
+
+        Assert.Equal(string.Empty, await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string[]> NombresDelCanalAsync(WebApplicationFactory<Program> app, string canal)
+    {
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Channel-Id", canal);
+        using var lista = await client.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.OK, lista.StatusCode);
+        return [.. (await lista.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().Select(c => c.GetProperty("name").GetString() ?? string.Empty)];
+    }
+
+    [Fact]
     public async Task Rls_ElRolDelServicioNoVeNiEscribeEnOtroTenant()
     {
         var tenant = Guid.NewGuid();

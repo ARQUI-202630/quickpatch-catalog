@@ -13,8 +13,11 @@ data:
   Jwt__Audience: "quickpatch"
   Kafka__BootstrapServers: "<vm-mensajeria>:9092"
   Outbox__PublisherRole: "catalog_outbox"
-  # Tenant del canal, el mismo de Identity: la lista de categorías sin token (registro de técnicos, contrato 1.2.0).
+  # Tenant del canal, el mismo mapa de Identity: la lista de categorías sin token (registro de técnicos, contrato 1.2.0).
   Channel__TenantId: "00000000-0000-0000-0000-000000000001"
+  # Canal -> tenant (RN-U5, DEP-09). Con el mapa definido, un canal que no esté aquí recibe 503.
+  Channel__Tenants__quickpatch-mobile: "00000000-0000-0000-0000-000000000001"
+  Channel__Tenants__quickpatch-web: "00000000-0000-0000-0000-000000000001"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -188,6 +188,44 @@ public class CategoriasSinTokenTests(CatalogApiFactory factory) : IClassFixture<
     }
 
     [Fact]
+    public async Task SinToken_ConMapaDeCanales_CadaCanalVeSuTenant_YUnCanalAjenoRecibe503()
+    {
+        var alfa = Guid.NewGuid();
+        var gama = Guid.NewGuid();
+        using var app = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Channel:TenantId", alfa.ToString());
+            b.UseSetting("Channel:Tenants:canal-alfa", alfa.ToString());
+            b.UseSetting("Channel:Tenants:canal-gama", gama.ToString());
+        });
+        using var adminAlfa = ConToken(app, "admin_tenant", alfa);
+        using var adminGama = ConToken(app, "admin_tenant", gama);
+        using (await adminAlfa.PostAsJsonAsync(Admin, new { name = "Plomería" }))
+        using (await adminGama.PostAsJsonAsync(Admin, new { name = "Gas" }))
+        {
+        }
+
+        async Task<HttpResponseMessage> ListarPorAsync(string? canal)
+        {
+            using var client = app.CreateClient();
+            if (canal is not null)
+            {
+                client.DefaultRequestHeaders.Add("X-Channel-Id", canal);
+            }
+
+            return await client.GetAsync(List);
+        }
+
+        using var porGama = await ListarPorAsync(" CANAL-GAMA ");
+        using var sinCabecera = await ListarPorAsync(null);
+        using var ajeno = await ListarPorAsync("canal-ajeno");
+
+        Assert.Equal(["Gas"], await Nombres(porGama));
+        Assert.Equal(["Plomería"], await Nombres(sinCabecera));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ajeno.StatusCode);
+    }
+
+    [Fact]
     public async Task ConToken_UsaElTenantDelToken_NoElDelCanal()
     {
         var canal = Guid.NewGuid();
