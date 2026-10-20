@@ -52,7 +52,7 @@ dotnet run --project src/QuickPatch.Catalog.Api
 |`POST /v1/catalog/admin/categories`: crear categoría (nombre único por tenant, sin distinguir mayúsculas)|`catalog.v1.yaml` 1.2.0|`admin_tenant`|
 |`PATCH /v1/catalog/admin/categories/{id}`: cambiar descripción o activar/desactivar|`catalog.v1.yaml` 1.2.0|`admin_tenant`|
 
-Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado completo de la categoría, mediante Outbox (ADR-007). ServiceRequest y Matching mantienen con él su réplica local (DD 5.20), así que nadie llama a Catalog de forma síncrona (SAD 4.3).
+Cada alta o cambio publica **`catalog.category-changed`** v1 con el estado completo de la categoría, mediante Outbox (ADR-007). ServiceRequest y Matching mantienen con él su réplica local (DD 5.20), así que nadie llama a Catalog de forma síncrona (SAD 4.3). Desde quickpatch-kafka v0.8.0 el evento lleva también `description`, y ServiceRequest sirve con su réplica la lista de categorías de la app y del panel (ADR-025). La migración `PublicarDescripcion` vuelve a publicar una vez todas las categorías existentes, con `updated_at` actual, para que las réplicas reciban la descripción.
 
 ## Seguridad y datos
 

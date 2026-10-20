@@ -128,6 +128,29 @@ public class CatalogFlowTests(CatalogEnvironment env)
     private static readonly Uri Admin = new("/v1/catalog/admin/categories", UriKind.Relative);
 
     [Fact]
+    public async Task ReenvioDeCategorias_PublicaLaDescripcionConUnUpdatedAtMasReciente()
+    {
+        var (tenant, id) = (Guid.NewGuid(), Guid.NewGuid());
+        var antes = DateTimeOffset.UtcNow.AddDays(-3);
+        await env.ExecuteAdminAsync(
+            "INSERT INTO service_categories (id, tenant_id, name, description, active, created_at, updated_at) " +
+            $"VALUES ('{id}', '{tenant}', 'Cerrajería', 'Chapas y copias de llaves.', true, '{antes:O}', '{antes:O}');");
+
+        // Lo mismo que hace la migración PublicarDescripcion sobre las categorías que ya existían.
+        await env.ExecuteAdminAsync(CategoryResync.Sql);
+
+        var evento = Assert.Single(env.Consume(id.ToString(), 1));
+        Assert.Equal("catalog.category-changed", evento.GetProperty("eventType").GetString());
+        Assert.Equal(1, evento.GetProperty("eventVersion").GetInt32());
+        Assert.Equal(tenant, evento.GetProperty("tenantId").GetGuid());
+        var data = evento.GetProperty("data");
+        Assert.Equal("Cerrajería", data.GetProperty("name").GetString());
+        Assert.Equal("Chapas y copias de llaves.", data.GetProperty("description").GetString());
+        Assert.True(data.GetProperty("active").GetBoolean());
+        Assert.True(data.GetProperty("updatedAt").GetDateTimeOffset() > antes.AddDays(1));
+    }
+
+    [Fact]
     public async Task CrearYDesactivar_PublicaElEstadoCompletoEnKafka()
     {
         var tenant = Guid.NewGuid();
