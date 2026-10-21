@@ -46,8 +46,9 @@ public class CategoryTests
         var data = root.GetProperty("data");
         Assert.Equal(category.Id, data.GetProperty("categoryId").GetGuid());
         Assert.Equal("Plomería", data.GetProperty("name").GetString());
+        Assert.Equal("Fugas y tuberías", data.GetProperty("description").GetString());
         Assert.True(data.GetProperty("active").GetBoolean());
-        Assert.Equal(4, data.EnumerateObject().Count());
+        Assert.Equal(5, data.EnumerateObject().Count());
     }
 
     [Fact]
