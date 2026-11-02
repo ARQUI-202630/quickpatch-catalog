@@ -151,6 +151,29 @@ public class CatalogFlowTests(CatalogEnvironment env)
     }
 
     [Fact]
+    public async Task ReenvioDeCategorias_ConVariasCategorias_PublicaUnEventoPorCadaUnaConSuPropioId()
+    {
+        // Con una sola categoría el INSERT del Outbox no repetía la clave; con varias, el id del evento se repetía
+        // (en QA, con 300 categorías, la migración PublicarDescripcion fallaba con PK_outbox_events).
+        var tenant = Guid.NewGuid();
+        var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+        var antes = DateTimeOffset.UtcNow.AddDays(-3);
+        foreach (var (id, n) in ids.Select((id, n) => (id, n)))
+        {
+            await env.ExecuteAdminAsync(
+                "INSERT INTO service_categories (id, tenant_id, name, description, active, created_at, updated_at) " +
+                $"VALUES ('{id}', '{tenant}', 'Categoría {n} {id}', 'Descripción {n}.', true, '{antes:O}', '{antes:O}');");
+        }
+
+        await env.ExecuteAdminAsync(CategoryResync.Sql);
+
+        var eventos = ids.Select(id => Assert.Single(env.Consume(id.ToString(), 1))).ToList();
+        var eventIds = eventos.Select(e => e.GetProperty("eventId").GetGuid()).ToList();
+        Assert.Equal(ids.Length, eventIds.Distinct().Count());
+        Assert.All(eventos, e => Assert.Equal(e.GetProperty("eventId").GetGuid(), e.GetProperty("correlationId").GetGuid()));
+    }
+
+    [Fact]
     public async Task CrearYDesactivar_PublicaElEstadoCompletoEnKafka()
     {
         var tenant = Guid.NewGuid();
