@@ -128,6 +128,52 @@ public class CatalogFlowTests(CatalogEnvironment env)
     private static readonly Uri Admin = new("/v1/catalog/admin/categories", UriKind.Relative);
 
     [Fact]
+    public async Task ReenvioDeCategorias_PublicaLaDescripcionConUnUpdatedAtMasReciente()
+    {
+        var (tenant, id) = (Guid.NewGuid(), Guid.NewGuid());
+        var antes = DateTimeOffset.UtcNow.AddDays(-3);
+        await env.ExecuteAdminAsync(
+            "INSERT INTO service_categories (id, tenant_id, name, description, active, created_at, updated_at) " +
+            $"VALUES ('{id}', '{tenant}', 'Cerrajería', 'Chapas y copias de llaves.', true, '{antes:O}', '{antes:O}');");
+
+        // Lo mismo que hace la migración PublicarDescripcion sobre las categorías que ya existían.
+        await env.ExecuteAdminAsync(CategoryResync.Sql);
+
+        var evento = Assert.Single(env.Consume(id.ToString(), 1));
+        Assert.Equal("catalog.category-changed", evento.GetProperty("eventType").GetString());
+        Assert.Equal(1, evento.GetProperty("eventVersion").GetInt32());
+        Assert.Equal(tenant, evento.GetProperty("tenantId").GetGuid());
+        var data = evento.GetProperty("data");
+        Assert.Equal("Cerrajería", data.GetProperty("name").GetString());
+        Assert.Equal("Chapas y copias de llaves.", data.GetProperty("description").GetString());
+        Assert.True(data.GetProperty("active").GetBoolean());
+        Assert.True(data.GetProperty("updatedAt").GetDateTimeOffset() > antes.AddDays(1));
+    }
+
+    [Fact]
+    public async Task ReenvioDeCategorias_ConVariasCategorias_PublicaUnEventoPorCadaUnaConSuPropioId()
+    {
+        // Con una sola categoría el INSERT del Outbox no repetía la clave; con varias, el id del evento se repetía
+        // (en QA, con 300 categorías, la migración PublicarDescripcion fallaba con PK_outbox_events).
+        var tenant = Guid.NewGuid();
+        var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+        var antes = DateTimeOffset.UtcNow.AddDays(-3);
+        foreach (var (id, n) in ids.Select((id, n) => (id, n)))
+        {
+            await env.ExecuteAdminAsync(
+                "INSERT INTO service_categories (id, tenant_id, name, description, active, created_at, updated_at) " +
+                $"VALUES ('{id}', '{tenant}', 'Categoría {n} {id}', 'Descripción {n}.', true, '{antes:O}', '{antes:O}');");
+        }
+
+        await env.ExecuteAdminAsync(CategoryResync.Sql);
+
+        var eventos = ids.Select(id => Assert.Single(env.Consume(id.ToString(), 1))).ToList();
+        var eventIds = eventos.Select(e => e.GetProperty("eventId").GetGuid()).ToList();
+        Assert.Equal(ids.Length, eventIds.Distinct().Count());
+        Assert.All(eventos, e => Assert.Equal(e.GetProperty("eventId").GetGuid(), e.GetProperty("correlationId").GetGuid()));
+    }
+
+    [Fact]
     public async Task CrearYDesactivar_PublicaElEstadoCompletoEnKafka()
     {
         var tenant = Guid.NewGuid();
@@ -175,6 +221,80 @@ public class CatalogFlowTests(CatalogEnvironment env)
         Assert.Empty((await listB.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
         Assert.Equal(HttpStatusCode.Created, mismoNombreEnB.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, repetidoEnA.StatusCode);
+    }
+
+    [Fact]
+    public async Task SinToken_ListaLasDelTenantDelCanal_BajoRls()
+    {
+        var canal = Guid.NewGuid();
+        var otro = Guid.NewGuid();
+        using (await env.Client("admin_tenant", canal).PostAsJsonAsync(Admin, new { name = "Pintura" }))
+        using (await env.Client("admin_tenant", otro).PostAsJsonAsync(Admin, new { name = "Jardinería" }))
+        {
+        }
+
+        // Registro de técnicos (contrato 1.2.0): sin token, el tenant es el del canal configurado en el servicio.
+        await using var app = env.App.WithWebHostBuilder(b => b.UseSetting("Channel:TenantId", canal.ToString()));
+        using var anonimo = app.CreateClient();
+        anonimo.DefaultRequestHeaders.Add("X-Channel-Id", "quickpatch-mobile");
+        using var lista = await anonimo.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, lista.StatusCode);
+        var nombres = (await lista.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
+            .Select(c => c.GetProperty("name").GetString());
+        Assert.Equal(["Pintura"], nombres);
+    }
+
+    [Fact]
+    public async Task SinToken_CadaCanalListaSoloLasDeSuTenant()
+    {
+        var alfa = Guid.NewGuid();
+        var gama = Guid.NewGuid();
+        using (await env.Client("admin_tenant", alfa).PostAsJsonAsync(Admin, new { name = "Cerrajería" }))
+        using (await env.Client("admin_tenant", gama).PostAsJsonAsync(Admin, new { name = "Vidriería" }))
+        {
+        }
+
+        // Dos empresas con su propio canal (DEP-09): el mismo servicio responde a cada app con su catálogo.
+        await using var app = env.App.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Channel:Tenants:canal-alfa", alfa.ToString());
+            b.UseSetting("Channel:Tenants:canal-gama", gama.ToString());
+        });
+
+        Assert.Equal(["Cerrajería"], await NombresDelCanalAsync(app, "canal-alfa"));
+        Assert.Equal(["Vidriería"], await NombresDelCanalAsync(app, "canal-gama"));
+        using var ajeno = app.CreateClient();
+        ajeno.DefaultRequestHeaders.Add("X-Channel-Id", "canal-ajeno");
+        using var respuesta = await ajeno.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rls_HabilitadoYForzadoEnCadaTablaConTenant()
+    {
+        // DD 10.1: toda tabla con tenant_id tiene RLS habilitado y forzado.
+        await using var connection = new NpgsqlConnection(env.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT coalesce(string_agg(c.relname, ', ' ORDER BY c.relname), '')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+            WHERE c.relkind = 'r'
+              AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+              AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
+            """, connection);
+
+        Assert.Equal(string.Empty, await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string[]> NombresDelCanalAsync(WebApplicationFactory<Program> app, string canal)
+    {
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Channel-Id", canal);
+        using var lista = await client.GetAsync(new Uri("/v1/catalog/categories", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.OK, lista.StatusCode);
+        return [.. (await lista.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().Select(c => c.GetProperty("name").GetString() ?? string.Empty)];
     }
 
     [Fact]

@@ -16,8 +16,11 @@ public sealed record EventEnvelope<TData>(
     string Producer,
     TData Data);
 
-/// <summary><c>data</c> de <c>catalog.category-changed</c> v1.</summary>
-public sealed record CategoryChangedData(Guid CategoryId, string Name, bool Active, DateTimeOffset UpdatedAt);
+/// <summary>
+/// <c>data</c> de <c>catalog.category-changed</c> v1. <see cref="Description"/> es opcional desde quickpatch-kafka v0.8.0:
+/// ServiceRequest sirve la lista de categorías desde su réplica (ADR-025).
+/// </summary>
+public sealed record CategoryChangedData(Guid CategoryId, string Name, string? Description, bool Active, DateTimeOffset UpdatedAt);
 
 public static class CategoryChangedEvent
 {
@@ -39,7 +42,7 @@ public static class CategoryChangedEvent
             correlationId,
             category.TenantId,
             Producer,
-            new CategoryChangedData(category.Id, category.Name, category.Active, category.UpdatedAt));
+            new CategoryChangedData(category.Id, category.Name, category.Description, category.Active, category.UpdatedAt));
         return new OutboxMessage(eventId, category.TenantId, category.Id, Type, JsonSerializer.Serialize(envelope, Json));
     }
 }
