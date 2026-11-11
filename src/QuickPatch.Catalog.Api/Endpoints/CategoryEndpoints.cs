@@ -2,6 +2,7 @@ using QuickPatch.Catalog.Api.Http;
 using QuickPatch.Catalog.Api.Security;
 using QuickPatch.Catalog.Application.Categories;
 using QuickPatch.Catalog.Domain.Common;
+using QuickPatch.Transversal.Http;
 
 namespace QuickPatch.Catalog.Api.Endpoints;
 
