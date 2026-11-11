@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 using QuickPatch.Catalog.Api.Http;
 using QuickPatch.Catalog.Api.Security;
 using QuickPatch.Catalog.Application.Categories;
@@ -24,10 +22,10 @@ public static class CategoryEndpoints
     private static async Task<IResult> ListAsync(
         HttpContext context,
         ListCategoriesHandler handler,
-        IOptions<ChannelOptions> channel,
+        RequestTenant requestTenant,
         CancellationToken cancellationToken)
     {
-        var tenant = RequestTenant.Resolve(context, channel.Value);
+        var tenant = requestTenant.Resolve(context);
         return tenant.Outcome switch
         {
             RequestTenant.Result.InvalidToken => Unauthorized(),
