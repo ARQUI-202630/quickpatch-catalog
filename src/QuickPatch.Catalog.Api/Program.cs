@@ -23,6 +23,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddHealthChecks();
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
 builder.Services.Configure<ChannelOptions>(builder.Configuration.GetSection(ChannelOptions.Section));
+builder.Services.AddSingleton<RequestTenant>();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
