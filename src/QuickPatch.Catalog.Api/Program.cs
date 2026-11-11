@@ -7,6 +7,7 @@ using QuickPatch.Catalog.Api.Http;
 using QuickPatch.Catalog.Api.Security;
 using QuickPatch.Catalog.Application;
 using QuickPatch.Catalog.Infrastructure;
+using QuickPatch.Transversal.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 

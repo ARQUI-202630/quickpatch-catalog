@@ -5,9 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Catalog.Application.Abstractions;
-using QuickPatch.Catalog.Infrastructure.Messaging;
 using QuickPatch.Catalog.Infrastructure.Options;
 using QuickPatch.Catalog.Infrastructure.Persistence;
+using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Catalog.Infrastructure;
 
@@ -46,8 +46,8 @@ public static class DependencyInjection
                 EnableIdempotence = true,
             }).Build());
 
-            services.AddSingleton<OutboxPublisher>();
-            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher>());
+            services.AddSingleton<OutboxPublisher<CatalogDbContext, OutboxEventRecord>>();
+            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher<CatalogDbContext, OutboxEventRecord>>());
         }
 
         return services;

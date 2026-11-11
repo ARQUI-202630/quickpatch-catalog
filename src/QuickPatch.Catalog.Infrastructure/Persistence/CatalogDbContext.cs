@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 using QuickPatch.Catalog.Domain.Categories;
+using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Catalog.Infrastructure.Persistence;
 
@@ -45,7 +46,7 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
 }
 
 /// <summary>Fila de <c>outbox_events</c> (DD 5.15).</summary>
-public sealed class OutboxEventRecord
+public sealed class OutboxEventRecord : IOutboxRecord
 {
     public Guid Id { get; set; }
 
