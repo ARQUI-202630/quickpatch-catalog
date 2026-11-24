@@ -7,11 +7,12 @@ using QuickPatch.Catalog.Api.Http;
 using QuickPatch.Catalog.Api.Security;
 using QuickPatch.Catalog.Application;
 using QuickPatch.Catalog.Infrastructure;
+using QuickPatch.Transversal.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Logs en JSON con scopes (correlationId), para Loki (SCRUM-323) y la auditoría de 403 (RNF-04).
-builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+builder.Logging.AddQuickPatchJsonConsole();
 
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = Problems.Customize);
 builder.Services.AddExceptionHandler<BadRequestExceptionHandler>();
@@ -23,6 +24,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddHealthChecks();
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
 builder.Services.Configure<ChannelOptions>(builder.Configuration.GetSection(ChannelOptions.Section));
+builder.Services.AddSingleton<RequestTenant>();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 

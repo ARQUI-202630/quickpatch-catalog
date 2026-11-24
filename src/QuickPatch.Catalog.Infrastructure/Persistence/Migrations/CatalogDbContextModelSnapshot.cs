@@ -63,7 +63,7 @@ namespace QuickPatch.Catalog.Infrastructure.Persistence.Migrations
                     b.ToTable("service_categories", (string)null);
                 });
 
-            modelBuilder.Entity("QuickPatch.Catalog.Infrastructure.Persistence.OutboxEventRecord", b =>
+            modelBuilder.Entity("QuickPatch.Transversal.Messaging.OutboxEventRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
